@@ -34,7 +34,8 @@ public class Player {
     private final ActionListener buttonListenerPlayNow = e -> {
         currentFrame = 0;
     };
-    private final ActionListener buttonListenerRemove = e -> {};
+    private final ActionListener buttonListenerRemove = e -> {
+    };
     private final ActionListener buttonListenerAddSong = e -> {
         Song musica = this.window.openFileChooser();
         listaDeMusicas.add(musica);
@@ -121,6 +122,16 @@ public class Player {
         int framesToSkip = newFrame - currentFrame;
         boolean condition = true;
         while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
+    }
+
+    private void criarObjetos() {
+        try {
+            this.device = FactoryRegistry.systemRegistry().createAudioDevice();
+            this.device.open(this.decoder = new Decoder());
+            this.bitstream = new Bitstream(musicaAtual.getBufferedInputStream());
+        } catch (JavaLayerException exception) {
+            throw new RuntimeException();
+        }
     }
     //</editor-fold>
 }
