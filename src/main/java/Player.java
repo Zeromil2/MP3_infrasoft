@@ -1,11 +1,15 @@
 import javazoom.jl.decoder.*;
 import javazoom.jl.player.AudioDevice;
+import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
+import support.Song;
 
 import javax.swing.event.MouseInputAdapter;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Player {
 
@@ -23,11 +27,26 @@ public class Player {
     private AudioDevice device;
 
     private PlayerWindow window;
+    private String[][] infoDasMusicas = new String[0][];
+    private ArrayList<Song> listaDeMusicas = new ArrayList<Song>();
     private int currentFrame = 0;
 
-    private final ActionListener buttonListenerPlayNow = e -> {};
+    private final ActionListener buttonListenerPlayNow = e -> {
+        currentFrame = 0;
+    };
     private final ActionListener buttonListenerRemove = e -> {};
-    private final ActionListener buttonListenerAddSong = e -> {};
+    private final ActionListener buttonListenerAddSong = e -> {
+        Song musica = this.window.openFileChooser();
+        listaDeMusicas.add(musica);
+
+        String[] dadosDaMusica = musica.getDisplayInfo();
+        int tamanho = infoDasMusicas.length;
+        infoDasMusicas = Arrays.copyOf(infoDasMusicas, tamanho+1);
+        infoDasMusicas[tamanho] = dadosDaMusica;
+
+        this.window.setQueueList(infoDasMusicas);
+    };
+
     private final ActionListener buttonListenerPlayPause = e -> {};
     private final ActionListener buttonListenerStop = e -> {};
     private final ActionListener buttonListenerNext = e -> {};
@@ -49,10 +68,10 @@ public class Player {
     };
 
     public Player() {
-        String[][] queue = ;
+//        String[][] listaDeMusicas = new String[0][];
         EventQueue.invokeLater(() -> window = new PlayerWindow(
-                ,
-                queue,
+                "CP Playlist",
+                infoDasMusicas,
                 buttonListenerPlayNow,
                 buttonListenerRemove,
                 buttonListenerAddSong,
