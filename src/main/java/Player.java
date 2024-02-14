@@ -8,6 +8,7 @@ import javax.swing.event.MouseInputAdapter;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -29,6 +30,9 @@ public class Player {
     private PlayerWindow window;
     private String[][] infoDasMusicas = new String[0][];
     private ArrayList<Song> listaDeMusicas = new ArrayList<Song>();
+
+    private int indice; // window.getSelectedSongIndex();
+    private  Song musicaAtual; // listaDeMusicas.get(indice);
     private int currentFrame = 0;
 
     private final ActionListener buttonListenerPlayNow = e -> {
@@ -124,13 +128,15 @@ public class Player {
         while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
     }
 
-    private void criarObjetos() {
+    private void criarObjetos(Song musicaAtual) {
         try {
             this.device = FactoryRegistry.systemRegistry().createAudioDevice();
             this.device.open(this.decoder = new Decoder());
             this.bitstream = new Bitstream(musicaAtual.getBufferedInputStream());
         } catch (JavaLayerException exception) {
             throw new RuntimeException();
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
         }
     }
     //</editor-fold>
