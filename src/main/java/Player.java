@@ -43,11 +43,12 @@ public class Player {
         int idxMusicaSelec = this.window.getSelectedSongIndex();
         int idxMusicaAtual = listaDeMusicas.indexOf(musicaAtual);
         if (idxMusicaSelec == idxMusicaAtual) {
-            interromperThread(threadDaMusica, bitstream, device);
+            interromperThread(threadDaMusica, bitstream, device); // para a reprodução caso remova a música que esteja tocando
             window.resetMiniPlayer();
         }
-        listaDeMusicas.remove(listaDeMusicas.get(idxMusicaSelec));
+        listaDeMusicas.remove(listaDeMusicas.get(idxMusicaSelec)); // remove da playlist (do tipo Song)
         int tamanho = infoDasMusicas.length;
+        // remove da matriz de String
         if (idxMusicaSelec == 0) {
             infoDasMusicas = Arrays.copyOfRange(infoDasMusicas, 1, tamanho);
         } else if (idxMusicaSelec == tamanho-1) {
@@ -62,11 +63,11 @@ public class Player {
     };
     private final ActionListener buttonListenerAddSong = e -> {
         Song musica = this.window.openFileChooser();
-        listaDeMusicas.add(musica);
+        listaDeMusicas.add(musica); // adicionando o arquivo mp3 selecionado ao arraylist da classe Song
         String[] dadosDaMusica = musica.getDisplayInfo();
         int tamanho = infoDasMusicas.length;
         infoDasMusicas = Arrays.copyOf(infoDasMusicas, tamanho+1);
-        infoDasMusicas[tamanho] = dadosDaMusica;
+        infoDasMusicas[tamanho] = dadosDaMusica; // salvando os dados da música numa matriz de String
         this.window.setQueueList(infoDasMusicas);
     };
 
