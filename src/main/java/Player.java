@@ -32,13 +32,14 @@ public class Player {
     private ArrayList<Song> listaDeMusicas = new ArrayList<Song>();
     private int currentFrame = 0;
     private int estaTocando = 0;     // 0 = Não está tocando; 1 = Está tocando;
-    private int indice; // = this.window.getSelectedSongIndex();
+    private int indice = 0; // = this.window.getSelectedSongIndex();
+    private boolean proximaMusica = false;
+    private boolean musicaAnterior = false;
     private Song musicaAtual; // = listaDeMusicas.get(indice);
     private Thread threadDaMusica;
 
     private final ActionListener buttonListenerPlayNow = e -> {
-        indice = this.window.getSelectedSongIndex();
-        iniciarNovaThread(indice);
+        iniciarNovaThread();
     };
     private final ActionListener buttonListenerRemove = e -> {
         int idxMusicaSelec = this.window.getSelectedSongIndex();
@@ -86,8 +87,14 @@ public class Player {
         interromperThread(threadDaMusica, bitstream, device);
         window.resetMiniPlayer();
     };
-    private final ActionListener buttonListenerNext = e -> {};
-    private final ActionListener buttonListenerPrevious = e -> {};
+    private final ActionListener buttonListenerNext = e -> {
+        proximaMusica = true;
+        iniciarNovaThread();
+    };
+    private final ActionListener buttonListenerPrevious = e -> {
+        musicaAnterior = true;
+        iniciarNovaThread();
+    };
     private final ActionListener buttonListenerShuffle = e -> {};
     private final ActionListener buttonListenerLoop = e -> {};
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
@@ -160,15 +167,19 @@ public class Player {
         while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
     }
 
-    private void iniciarNovaThread(int indice) {
+    private void iniciarNovaThread() {
         interromperThread(threadDaMusica, bitstream, device);   // Chama a função para interromper a thread atual
-//        indice = this.window.getSelectedSongIndex();
+        if (proximaMusica) indice++;
+        else if (musicaAnterior) indice--;
+        else indice = this.window.getSelectedSongIndex();
         musicaAtual = listaDeMusicas.get(indice);
         criarObjetos();
 
-        // Reseta as variáveis da música, setando o frame atual para 0 e toquePause para o estado 1 (de tocar).
+        // Reseta as variáveis da música
         currentFrame = 0;
         estaTocando = 1;
+        proximaMusica = false;
+        musicaAnterior = false;
         window.setPlayingSongInfo(musicaAtual.getTitle(), musicaAtual.getAlbum(), musicaAtual.getArtist());
 
         novaThread();
@@ -183,12 +194,14 @@ public class Player {
                     window.setPlayPauseButtonIcon(estaTocando);
                     window.setEnabledPlayPauseButton(true);
                     window.setEnabledStopButton(true);
+                    window.setEnabledPreviousButton(indice != 0);
+                    window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
                     try {
                         if (!this.playNextFrame()) {
                             estaTocando = 0;
-                            if (!(listaDeMusicas.indexOf(musicaAtual) == listaDeMusicas.size()-1)) {
-                                indice++;
-                                iniciarNovaThread(indice);
+                            if (!(indice == listaDeMusicas.size()-1)) {
+                                proximaMusica = true;
+                                break;
                             }
                             else window.resetMiniPlayer();
                         } else {
@@ -199,6 +212,7 @@ public class Player {
                     }
                 }
             }
+            if (proximaMusica) iniciarNovaThread();
         });
         threadDaMusica.start();
     }
