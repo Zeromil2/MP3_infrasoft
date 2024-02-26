@@ -37,7 +37,8 @@ public class Player {
     private Thread threadDaMusica;
 
     private final ActionListener buttonListenerPlayNow = e -> {
-        iniciarNovaThread();
+        indice = this.window.getSelectedSongIndex();
+        iniciarNovaThread(indice);
     };
     private final ActionListener buttonListenerRemove = e -> {
         int idxMusicaSelec = this.window.getSelectedSongIndex();
@@ -158,9 +159,9 @@ public class Player {
         while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
     }
 
-    private void iniciarNovaThread() {
+    private void iniciarNovaThread(int indice) {
         interromperThread(threadDaMusica, bitstream, device);   // Chama a função para interromper a thread atual
-        indice = this.window.getSelectedSongIndex();
+//        indice = this.window.getSelectedSongIndex();
         musicaAtual = listaDeMusicas.get(indice);
         criarObjetos();
 
@@ -184,7 +185,11 @@ public class Player {
                     try {
                         if (!this.playNextFrame()) {
                             estaTocando = 0;
-                            window.resetMiniPlayer();
+                            if (!(listaDeMusicas.indexOf(musicaAtual) == listaDeMusicas.size()-1)) {
+                                indice++;
+                                iniciarNovaThread(indice);
+                            }
+                            else window.resetMiniPlayer();
                         } else {
                             currentFrame++;
                         }
