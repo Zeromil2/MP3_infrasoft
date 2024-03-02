@@ -11,6 +11,8 @@ import java.awt.event.MouseEvent;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Player {
 
@@ -30,13 +32,15 @@ public class Player {
     private PlayerWindow window;
     private String[][] infoDasMusicas = new String[0][];
     private ArrayList<Song> listaDeMusicas = new ArrayList<Song>();
+    private int tempoTotal;
     private int currentFrame = 0;
-    private int estaTocando = 0;     // 0 = Não está tocando; 1 = Está tocando;
+    private int estaTocando = 1;     // 0 = Não está tocando; 1 = Está tocando;
     private int indice = 0; // = this.window.getSelectedSongIndex();
     private boolean proximaMusica = false;
     private boolean musicaAnterior = false;
     private Song musicaAtual; // = listaDeMusicas.get(indice);
     private Thread threadDaMusica;
+    private Semaphore semaforo = new Semaphore(1);
 
     private final ActionListener buttonListenerPlayNow = e -> {
         iniciarNovaThread();
@@ -76,12 +80,11 @@ public class Player {
     private final ActionListener buttonListenerPlayPause = e -> {
         if (estaTocando == 1) {
             estaTocando = 0;
-            window.setPlayPauseButtonIcon(0);
         } else {
             estaTocando = 1;
-            window.setPlayPauseButtonIcon(1);
-            novaThread();
+            semaforo.release();
         }
+        window.setPlayPauseButtonIcon(estaTocando);
     };
     private final ActionListener buttonListenerStop = e -> {
         interromperThread(threadDaMusica, bitstream, device);
@@ -98,21 +101,41 @@ public class Player {
     private final ActionListener buttonListenerShuffle = e -> {};
     private final ActionListener buttonListenerLoop = e -> {};
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
+        int estadoAnterior;
+        int novoFrame;
         @Override
         public void mouseReleased(MouseEvent e) {
+            // Zera o frame atual e pausa a música momentaneamente
+            currentFrame = 0;
+            estaTocando = 0;
+            try {
+                bitstream.close();
+                device.close();
+                criarObjetos();
+                skipToFrame(novoFrame);
+                // Retorna ao estado anterior da música após o skip
+                estaTocando = estadoAnterior;
+                semaforo.release();
+            } catch (BitstreamException exception) {
+                throw new RuntimeException();
+            }
+            window.setTime((int)(novoFrame * musicaAtual.getMsPerFrame()), tempoTotal);
         }
 
         @Override
         public void mousePressed(MouseEvent e) {
+            estadoAnterior = estaTocando;
+            novoFrame = (int)(window.getScrubberValue() / musicaAtual.getMsPerFrame());
         }
 
         @Override
         public void mouseDragged(MouseEvent e) {
+            estadoAnterior = estaTocando;
+            novoFrame = (int)(window.getScrubberValue() / musicaAtual.getMsPerFrame());
         }
     };
 
     public Player() {
-//        String[][] listaDeMusicas = new String[0][];
         EventQueue.invokeLater(() -> window = new PlayerWindow(
                 "CP Playlist",
                 infoDasMusicas,
@@ -187,15 +210,24 @@ public class Player {
 
     private void novaThread() {
         threadDaMusica = new Thread(() -> {
-            int tempoTotal = (int) (musicaAtual.getNumFrames() * musicaAtual.getMsPerFrame());
+            tempoTotal = (int)(musicaAtual.getNumFrames() * musicaAtual.getMsPerFrame());
             while (true) {
+                // Tenta adquirir o semáforo se a música estiver pausada, para então resumir a música
+                try {
+                    if (estaTocando == 0) semaforo.acquire();
+                } catch (InterruptedException exception) {
+                    exception.printStackTrace();
+                }
+
                 if (estaTocando == 1) {
-                    window.setTime((int) (currentFrame * musicaAtual.getMsPerFrame()), tempoTotal);
+                    window.setTime((int)(currentFrame * musicaAtual.getMsPerFrame()), tempoTotal);
                     window.setPlayPauseButtonIcon(estaTocando);
                     window.setEnabledPlayPauseButton(true);
                     window.setEnabledStopButton(true);
                     window.setEnabledPreviousButton(indice != 0);
                     window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
+                    window.setEnabledScrubber(true);
+
                     try {
                         if (!this.playNextFrame()) {
                             estaTocando = 0;
