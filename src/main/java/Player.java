@@ -38,21 +38,24 @@ public class Player {
     private int indice = 0; // = this.window.getSelectedSongIndex();
     private boolean proximaMusica = false;
     private boolean musicaAnterior = false;
+    private boolean semaforoScrubber = true;
     private Song musicaAtual; // = listaDeMusicas.get(indice);
     private Thread threadDaMusica;
-    private Semaphore semaforo = new Semaphore(1);
+    private Semaphore semaforoPause = new Semaphore(1);
 
     private final ActionListener buttonListenerPlayNow = e -> {
         iniciarNovaThread();
     };
+
     private final ActionListener buttonListenerRemove = e -> {
         int idxMusicaSelec = this.window.getSelectedSongIndex();
         int idxMusicaAtual = listaDeMusicas.indexOf(musicaAtual);
         if (idxMusicaSelec == idxMusicaAtual) {
             interromperThread(threadDaMusica, bitstream, device); // para a reprodução caso remova a música que esteja tocando
-            window.resetMiniPlayer();
+            EventQueue.invokeLater(() -> window.resetMiniPlayer());
         }
         listaDeMusicas.remove(listaDeMusicas.get(idxMusicaSelec)); // remove da playlist (do tipo Song)
+        if (idxMusicaAtual > idxMusicaSelec) indice--;
         int tamanho = infoDasMusicas.length;
         // remove da matriz de String
         if (idxMusicaSelec == 0) {
@@ -65,16 +68,19 @@ public class Player {
             infoDasMusicas = Arrays.copyOf(parte1, parte1.length + parte2.length);
             System.arraycopy(parte2, 0, infoDasMusicas, parte1.length, parte2.length);
         }
-        this.window.setQueueList(infoDasMusicas);
+        EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
     };
+
     private final ActionListener buttonListenerAddSong = e -> {
         Song musica = this.window.openFileChooser();
-        listaDeMusicas.add(musica); // adicionando o arquivo mp3 selecionado ao arraylist da classe Song
-        String[] dadosDaMusica = musica.getDisplayInfo();
-        int tamanho = infoDasMusicas.length;
-        infoDasMusicas = Arrays.copyOf(infoDasMusicas, tamanho+1);
-        infoDasMusicas[tamanho] = dadosDaMusica; // salvando os dados da música numa matriz de String
-        this.window.setQueueList(infoDasMusicas);
+        if (musica != null) {
+            listaDeMusicas.add(musica); // adicionando o arquivo mp3 selecionado ao arraylist da classe Song
+            String[] dadosDaMusica = musica.getDisplayInfo();
+            int tamanho = infoDasMusicas.length;
+            infoDasMusicas = Arrays.copyOf(infoDasMusicas, tamanho+1);
+            infoDasMusicas[tamanho] = dadosDaMusica; // salvando os dados da música numa matriz de String
+            EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
+        }
     };
 
     private final ActionListener buttonListenerPlayPause = e -> {
@@ -82,24 +88,32 @@ public class Player {
             estaTocando = 0;
         } else {
             estaTocando = 1;
-            semaforo.release();
+            semaforoPause.release();
         }
-        window.setPlayPauseButtonIcon(estaTocando);
+        EventQueue.invokeLater(() -> window.setPlayPauseButtonIcon(estaTocando));
     };
+
     private final ActionListener buttonListenerStop = e -> {
         interromperThread(threadDaMusica, bitstream, device);
-        window.resetMiniPlayer();
+        EventQueue.invokeLater(() -> window.resetMiniPlayer());
     };
+
     private final ActionListener buttonListenerNext = e -> {
         proximaMusica = true;
+        semaforoPause.release();
         iniciarNovaThread();
     };
+
     private final ActionListener buttonListenerPrevious = e -> {
         musicaAnterior = true;
+        semaforoPause.release();
         iniciarNovaThread();
     };
+
     private final ActionListener buttonListenerShuffle = e -> {};
+
     private final ActionListener buttonListenerLoop = e -> {};
+
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
         int estadoAnterior;
         int novoFrame;
@@ -113,25 +127,27 @@ public class Player {
                 device.close();
                 criarObjetos();
                 skipToFrame(novoFrame);
+
                 // Retorna ao estado anterior da música após o skip
                 estaTocando = estadoAnterior;
-                semaforo.release();
+                semaforoPause.release();
             } catch (BitstreamException exception) {
                 throw new RuntimeException();
             }
-            window.setTime((int)(novoFrame * musicaAtual.getMsPerFrame()), tempoTotal);
+            EventQueue.invokeLater(() -> window.setTime((int)(novoFrame * musicaAtual.getMsPerFrame()), tempoTotal));
+            semaforoScrubber = true;
         }
-
         @Override
         public void mousePressed(MouseEvent e) {
             estadoAnterior = estaTocando;
             novoFrame = (int)(window.getScrubberValue() / musicaAtual.getMsPerFrame());
+            semaforoScrubber = false;
         }
-
         @Override
         public void mouseDragged(MouseEvent e) {
             estadoAnterior = estaTocando;
             novoFrame = (int)(window.getScrubberValue() / musicaAtual.getMsPerFrame());
+            EventQueue.invokeLater(() -> window.setTime((int)(novoFrame * musicaAtual.getMsPerFrame()), tempoTotal));
         }
     };
 
@@ -152,7 +168,6 @@ public class Player {
         );
     }
 
-    //<editor-fold desc="Essential">
     /**
      * @return False if there are no more frames to play.
      */
@@ -164,6 +179,7 @@ public class Player {
             SampleBuffer output = (SampleBuffer) decoder.decodeFrame(h, bitstream);
             device.write(output.getBuffer(), 0, output.getBufferLength());
             bitstream.closeFrame();
+            currentFrame++;
         }
         return true;
     }
@@ -203,7 +219,7 @@ public class Player {
         estaTocando = 1;
         proximaMusica = false;
         musicaAnterior = false;
-        window.setPlayingSongInfo(musicaAtual.getTitle(), musicaAtual.getAlbum(), musicaAtual.getArtist());
+        EventQueue.invokeLater(() -> window.setPlayingSongInfo(musicaAtual.getTitle(), musicaAtual.getAlbum(), musicaAtual.getArtist()));
 
         novaThread();
     }
@@ -214,30 +230,26 @@ public class Player {
             while (true) {
                 // Tenta adquirir o semáforo se a música estiver pausada, para então resumir a música
                 try {
-                    if (estaTocando == 0) semaforo.acquire();
+                    if (estaTocando == 0) semaforoPause.acquire();
                 } catch (InterruptedException exception) {
                     exception.printStackTrace();
                 }
 
                 if (estaTocando == 1) {
-                    window.setTime((int)(currentFrame * musicaAtual.getMsPerFrame()), tempoTotal);
-                    window.setPlayPauseButtonIcon(estaTocando);
-                    window.setEnabledPlayPauseButton(true);
-                    window.setEnabledStopButton(true);
-                    window.setEnabledPreviousButton(indice != 0);
-                    window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
-                    window.setEnabledScrubber(true);
+                    EventQueue.invokeLater(() -> {
+                        if (semaforoScrubber) window.setTime((int) (currentFrame * musicaAtual.getMsPerFrame()), tempoTotal);
+                        window.setPlayPauseButtonIcon(estaTocando);
+                        window.setEnabledPlayPauseButton(true);
+                        window.setEnabledStopButton(true);
+                        window.setEnabledPreviousButton(indice != 0);
+                        window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
+                        window.setEnabledScrubber(true);
+                    });
 
                     try {
                         if (!this.playNextFrame()) {
-                            estaTocando = 0;
-                            if (!(indice == listaDeMusicas.size()-1)) {
-                                proximaMusica = true;
-                                break;
-                            }
-                            else window.resetMiniPlayer();
-                        } else {
-                            currentFrame++;
+                            if (!(indice == listaDeMusicas.size()-1)) proximaMusica = true;
+                            break;
                         }
                     } catch (JavaLayerException exception) {
                         throw new RuntimeException();
@@ -245,6 +257,10 @@ public class Player {
                 }
             }
             if (proximaMusica) iniciarNovaThread();
+            else {
+                interromperThread(threadDaMusica, bitstream, device);
+                EventQueue.invokeLater(() -> window.resetMiniPlayer());
+            }
         });
         threadDaMusica.start();
     }
@@ -270,5 +286,4 @@ public class Player {
             throw new RuntimeException();
         }
     }
-    //</editor-fold>
 }
