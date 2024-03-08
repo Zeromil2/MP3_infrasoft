@@ -39,6 +39,7 @@ public class Player {
     private boolean proximaMusica = false;
     private boolean musicaAnterior = false;
     private boolean semaforoScrubber = true;
+    private boolean estaEmLoop = false;
     private Song musicaAtual; // = listaDeMusicas.get(indice);
     private Thread threadDaMusica;
     private Semaphore semaforoPause = new Semaphore(1);
@@ -68,6 +69,7 @@ public class Player {
             infoDasMusicas = Arrays.copyOf(parte1, parte1.length + parte2.length);
             System.arraycopy(parte2, 0, infoDasMusicas, parte1.length, parte2.length);
         }
+        if (listaDeMusicas.isEmpty() && estaEmLoop) estaEmLoop = false; // Reseta a flag para no caso em que todas as músicas sejam removidas
         EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
     };
 
@@ -95,6 +97,7 @@ public class Player {
 
     private final ActionListener buttonListenerStop = e -> {
         interromperThread(threadDaMusica, bitstream, device);
+        if (estaEmLoop) estaEmLoop = false; // Desabilita a flag caso a música seja parada
         EventQueue.invokeLater(() -> window.resetMiniPlayer());
     };
 
@@ -112,7 +115,11 @@ public class Player {
 
     private final ActionListener buttonListenerShuffle = e -> {};
 
-    private final ActionListener buttonListenerLoop = e -> {};
+    private final ActionListener buttonListenerLoop = e -> {
+        if (!estaEmLoop) estaEmLoop = true;
+        else estaEmLoop = false;
+
+    };
 
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
         int estadoAnterior;
@@ -210,6 +217,7 @@ public class Player {
         interromperThread(threadDaMusica, bitstream, device);   // Chama a função para interromper a thread atual
         if (proximaMusica) indice++;
         else if (musicaAnterior) indice--;
+        else if (estaEmLoop && indice == listaDeMusicas.size()-1) indice = 0;
         else indice = this.window.getSelectedSongIndex();
         musicaAtual = listaDeMusicas.get(indice);
         criarObjetos();
@@ -244,11 +252,12 @@ public class Player {
                         window.setEnabledPreviousButton(indice != 0);
                         window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
                         window.setEnabledScrubber(true);
+                        window.setEnabledLoopButton(!listaDeMusicas.isEmpty());
                     });
 
                     try {
                         if (!this.playNextFrame()) {
-                            if (!(indice == listaDeMusicas.size()-1)) proximaMusica = true;
+                            if (indice != listaDeMusicas.size()-1) proximaMusica = true;
                             break;
                         }
                     } catch (JavaLayerException exception) {
@@ -256,7 +265,7 @@ public class Player {
                     }
                 }
             }
-            if (proximaMusica) iniciarNovaThread();
+            if (proximaMusica || estaEmLoop) iniciarNovaThread();
             else {
                 interromperThread(threadDaMusica, bitstream, device);
                 EventQueue.invokeLater(() -> window.resetMiniPlayer());
