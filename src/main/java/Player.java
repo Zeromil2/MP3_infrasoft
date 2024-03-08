@@ -56,7 +56,7 @@ public class Player {
             EventQueue.invokeLater(() -> window.resetMiniPlayer());
         }
         listaDeMusicas.remove(listaDeMusicas.get(idxMusicaSelec)); // remove da playlist (do tipo Song)
-        if (idxMusicaAtual > idxMusicaSelec) indice--;
+        if (idxMusicaAtual > idxMusicaSelec) indice--; // atualizando índice, caso uma música anterior seja removida
         int tamanho = infoDasMusicas.length;
         // remove da matriz de String
         if (idxMusicaSelec == 0) {
@@ -87,10 +87,10 @@ public class Player {
 
     private final ActionListener buttonListenerPlayPause = e -> {
         if (estaTocando == 1) {
-            estaTocando = 0;
+            estaTocando = 0; // "bloqueia" o semáforo
         } else {
             estaTocando = 1;
-            semaforoPause.release();
+            semaforoPause.release(); // libera o semáforo
         }
         EventQueue.invokeLater(() -> window.setPlayPauseButtonIcon(estaTocando));
     };
@@ -103,7 +103,7 @@ public class Player {
 
     private final ActionListener buttonListenerNext = e -> {
         proximaMusica = true;
-        semaforoPause.release();
+        semaforoPause.release(); // para o caso da música estar pausada e o semáforo estar bloqueado
         iniciarNovaThread();
     };
 
@@ -148,7 +148,7 @@ public class Player {
         public void mousePressed(MouseEvent e) {
             estadoAnterior = estaTocando;
             novoFrame = (int)(window.getScrubberValue() / musicaAtual.getMsPerFrame());
-            semaforoScrubber = false;
+            semaforoScrubber = false; // para o scrubber não continuar prosseguindo automaticamente
         }
         @Override
         public void mouseDragged(MouseEvent e) {
@@ -265,6 +265,7 @@ public class Player {
                     }
                 }
             }
+            // interrompe threads ao final da música e recria caso haja uma próxima música
             if (proximaMusica || estaEmLoop) iniciarNovaThread();
             else {
                 interromperThread(threadDaMusica, bitstream, device);
