@@ -2,6 +2,7 @@ import javazoom.jl.decoder.*;
 import javazoom.jl.player.AudioDevice;
 import javazoom.jl.player.FactoryRegistry;
 import support.PlayerWindow;
+import support.Playlist;
 import support.Song;
 
 import javax.swing.event.MouseInputAdapter;
@@ -11,6 +12,8 @@ import java.awt.event.MouseEvent;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -30,34 +33,56 @@ public class Player {
     private AudioDevice device;
 
     private PlayerWindow window;
+    private Playlist listaDeMusicas = new Playlist();
     private String[][] infoDasMusicas = new String[0][];
-    private ArrayList<Song> listaDeMusicas = new ArrayList<Song>();
     private int tempoTotal;
     private int currentFrame = 0;
-    private int estaTocando = 1;     // 0 = Não está tocando; 1 = Está tocando;
-    private int indice = 0; // = this.window.getSelectedSongIndex();
+    private int estaTocando = 1; // 0 = Não está tocando; 1 = Está tocando;
+    private int indice = 0;
     private boolean proximaMusica = false;
     private boolean musicaAnterior = false;
     private boolean semaforoScrubber = true;
-    private Song musicaAtual; // = listaDeMusicas.get(indice);
+    private boolean estaParado = true;
+    private Song musicaAtual;
     private Thread threadDaMusica;
     private Semaphore semaforoPause = new Semaphore(1);
 
     private final ActionListener buttonListenerPlayNow = e -> {
+        indice = this.window.getSelectedSongIndex();
         iniciarNovaThread();
     };
 
     private final ActionListener buttonListenerRemove = e -> {
         int idxMusicaSelec = this.window.getSelectedSongIndex();
-        int idxMusicaAtual = listaDeMusicas.indexOf(musicaAtual);
-        if (idxMusicaSelec == idxMusicaAtual) {
-            interromperThread(threadDaMusica, bitstream, device); // para a reprodução caso remova a música que esteja tocando
-            EventQueue.invokeLater(() -> window.resetMiniPlayer());
+
+        // Entra no if se tiver alguma música tocando, se não, apenas remove a música
+        if (!estaParado) {
+            if (idxMusicaSelec < listaDeMusicas.getCurrentIndex()) { // Se alguma música antes da tocada for removida
+                listaDeMusicas.remove(idxMusicaSelec);
+                listaDeMusicas.setCurrentIndex(--indice);
+            } else if (listaDeMusicas.getCurrentIndex() == idxMusicaSelec) { // Se a música sendo tocada for removida
+                // Se tiver próxima música ou se a playlist estiver em loop
+                if (idxMusicaSelec < listaDeMusicas.size()-1) {
+                    listaDeMusicas.remove(idxMusicaSelec);
+                    iniciarNovaThread();
+                } else if (listaDeMusicas.isLooping() && listaDeMusicas.size() > 1) {
+                    listaDeMusicas.remove(idxMusicaSelec);
+                    indice = 0;
+                    iniciarNovaThread();
+                } else {
+                    listaDeMusicas.remove(idxMusicaSelec);
+                    interromperThread(threadDaMusica, bitstream, device);
+                    EventQueue.invokeLater(() -> this.window.resetMiniPlayer());
+                }
+            } else { // Caso seja uma música posterior à música que está tocando agora
+                listaDeMusicas.remove(idxMusicaSelec);
+            }
+        } else {
+            listaDeMusicas.remove(idxMusicaSelec);
         }
-        listaDeMusicas.remove(listaDeMusicas.get(idxMusicaSelec)); // remove da playlist (do tipo Song)
-        if (idxMusicaAtual > idxMusicaSelec) indice--; // atualizando índice, caso uma música anterior seja removida
+
+        // Remove da matriz de String
         int tamanho = infoDasMusicas.length;
-        // remove da matriz de String
         if (idxMusicaSelec == 0) {
             infoDasMusicas = Arrays.copyOfRange(infoDasMusicas, 1, tamanho);
         } else if (idxMusicaSelec == tamanho-1) {
@@ -69,6 +94,13 @@ public class Player {
             System.arraycopy(parte2, 0, infoDasMusicas, parte1.length, parte2.length);
         }
         EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
+
+        if (listaDeMusicas.isEmpty()) {
+            EventQueue.invokeLater(() -> {
+                window.setEnabledShuffleButton(false);
+                window.setEnabledLoopButton(false);
+            });
+        }
     };
 
     private final ActionListener buttonListenerAddSong = e -> {
@@ -80,6 +112,13 @@ public class Player {
             infoDasMusicas = Arrays.copyOf(infoDasMusicas, tamanho+1);
             infoDasMusicas[tamanho] = dadosDaMusica; // salvando os dados da música numa matriz de String
             EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
+        }
+
+        if (!listaDeMusicas.isEmpty()) {
+            EventQueue.invokeLater(() -> {
+                window.setEnabledShuffleButton(true);
+                window.setEnabledLoopButton(true);
+            });
         }
     };
 
@@ -110,9 +149,19 @@ public class Player {
         iniciarNovaThread();
     };
 
-    private final ActionListener buttonListenerShuffle = e -> {};
+    private final ActionListener buttonListenerShuffle = e -> {
+        listaDeMusicas.toggleShuffle(!estaParado);
+        // Reorganiza a lista infoDasMusicas de acordo com a nova ordem
+        int i = 0;
+        for (String[] dadosDaMusica : listaDeMusicas.getDisplayInfo()) {
+            infoDasMusicas[i] = dadosDaMusica; i++;
+        }
+        // Atualiza o índice da música atual e atualiza as informações das músicas na tela
+        indice = listaDeMusicas.getCurrentIndex();
+        EventQueue.invokeLater(() -> this.window.setQueueList(infoDasMusicas));
+    };
 
-    private final ActionListener buttonListenerLoop = e -> {};
+    private final ActionListener buttonListenerLoop = e -> listaDeMusicas.toggleLooping();
 
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
         int estadoAnterior;
@@ -208,9 +257,9 @@ public class Player {
 
     private void iniciarNovaThread() {
         interromperThread(threadDaMusica, bitstream, device);   // Chama a função para interromper a thread atual
-        if (proximaMusica) indice++;
-        else if (musicaAnterior) indice--;
-        else indice = this.window.getSelectedSongIndex();
+        if (proximaMusica) indice = listaDeMusicas.getNextIndex();
+        else if (musicaAnterior) indice = listaDeMusicas.getPreviousIndex();
+        listaDeMusicas.setCurrentIndex(indice);
         musicaAtual = listaDeMusicas.get(indice);
         criarObjetos();
 
@@ -219,6 +268,7 @@ public class Player {
         estaTocando = 1;
         proximaMusica = false;
         musicaAnterior = false;
+        estaParado = false;
         EventQueue.invokeLater(() -> window.setPlayingSongInfo(musicaAtual.getTitle(), musicaAtual.getAlbum(), musicaAtual.getArtist()));
 
         novaThread();
@@ -232,7 +282,7 @@ public class Player {
                 try {
                     if (estaTocando == 0) semaforoPause.acquire();
                 } catch (InterruptedException exception) {
-                    exception.printStackTrace();
+                    throw new RuntimeException();
                 }
 
                 if (estaTocando == 1) {
@@ -241,14 +291,14 @@ public class Player {
                         window.setPlayPauseButtonIcon(estaTocando);
                         window.setEnabledPlayPauseButton(true);
                         window.setEnabledStopButton(true);
-                        window.setEnabledPreviousButton(indice != 0);
-                        window.setEnabledNextButton(indice != listaDeMusicas.size() - 1);
+                        window.setEnabledPreviousButton(listaDeMusicas.isLooping() || indice > 0);
+                        window.setEnabledNextButton(listaDeMusicas.isLooping() || indice < listaDeMusicas.size() - 1);
                         window.setEnabledScrubber(true);
                     });
 
                     try {
                         if (!this.playNextFrame()) {
-                            if (!(indice == listaDeMusicas.size()-1)) proximaMusica = true;
+                            if (listaDeMusicas.isLooping() || indice != listaDeMusicas.size()-1) proximaMusica = true;
                             break;
                         }
                     } catch (JavaLayerException exception) {
@@ -256,7 +306,7 @@ public class Player {
                     }
                 }
             }
-            // interrompe threads ao final da música e recria caso haja uma próxima música
+            // Interrompe threads ao final da música e recria caso haja uma próxima música
             if (proximaMusica) iniciarNovaThread();
             else {
                 interromperThread(threadDaMusica, bitstream, device);
@@ -267,7 +317,8 @@ public class Player {
     }
 
     private void interromperThread(Thread threadDaMusica, Bitstream bitstream, AudioDevice device) {
-        if (bitstream != null) {
+        if (threadDaMusica != null) {
+            estaParado = true;
             threadDaMusica.interrupt();
             try {
                 bitstream.close();
