@@ -35,7 +35,6 @@ public class Player {
     private PlayerWindow window;
     private Playlist listaDeMusicas = new Playlist();
     private String[][] infoDasMusicas = new String[0][];
-    private int flagMusicaRemovida;
     private int tempoTotal;
     private int currentFrame = 0;
     private int estaTocando = 1; // 0 = Não está tocando; 1 = Está tocando;
@@ -63,14 +62,20 @@ public class Player {
                 listaDeMusicas.setCurrentIndex(--indice);
             } else if (listaDeMusicas.getCurrentIndex() == idxMusicaSelec) { // Se a música sendo tocada for removida
                 // Se tiver próxima música ou se a playlist estiver em loop
-                if (idxMusicaSelec < listaDeMusicas.size()-1 || listaDeMusicas.isLooping()) {
+                if (idxMusicaSelec < listaDeMusicas.size()-1) {
                     listaDeMusicas.remove(idxMusicaSelec);
+                    iniciarNovaThread();
+                } else if (listaDeMusicas.isLooping() && listaDeMusicas.size() > 1) {
+                    listaDeMusicas.remove(idxMusicaSelec);
+                    indice = 0;
                     iniciarNovaThread();
                 } else {
                     listaDeMusicas.remove(idxMusicaSelec);
                     interromperThread(threadDaMusica, bitstream, device);
                     EventQueue.invokeLater(() -> this.window.resetMiniPlayer());
                 }
+            } else { // Caso seja uma música posterior à música que está tocando agora
+                listaDeMusicas.remove(idxMusicaSelec);
             }
         } else {
             listaDeMusicas.remove(idxMusicaSelec);
